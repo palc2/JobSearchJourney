@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Saver</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #0f0f11;
+    color: #e8e6e1;
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+
+  h1 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #7c6fff;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 0.8rem;
+    color: #5a5870;
+    margin-bottom: 28px;
+  }
+
+  .card {
+    background: #17161c;
+    border: 1px solid #2a2835;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #5a5870;
+    margin-bottom: 8px;
+  }
+
+  textarea {
+    width: 100%;
+    background: #0f0f11;
+    border: 1px solid #2a2835;
+    border-radius: 8px;
+    color: #e8e6e1;
+    font-family: inherit;
+    font-size: 0.88rem;
+    line-height: 1.6;
+    padding: 12px;
+    resize: vertical;
+    min-height: 160px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  textarea:focus { border-color: #7c6fff; }
+  textarea::placeholder { color: #3a3850; }
+
+  input[type="text"] {
+    width: 100%;
+    background: #0f0f11;
+    border: 1px solid #2a2835;
+    border-radius: 8px;
+    color: #e8e6e1;
+    font-family: inherit;
+    font-size: 0.88rem;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type="text"]:focus { border-color: #7c6fff; }
+  input[type="text"]::placeholder { color: #3a3850; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 20px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: #7c6fff;
+    color: #fff;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .btn-primary:hover:not(:disabled) { background: #9080ff; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-save {
+    background: #1e3a2e;
+    color: #4ade80;
+    border: 1px solid #2d5240;
+    width: 100%;
+    justify-content: center;
+    margin-top: 8px;
+  }
+
+  .btn-save:hover:not(:disabled) { background: #25472f; }
+  .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .extracted-grid { display: grid; gap: 12px; }
+
+  .field-block {
+    background: #0f0f11;
+    border: 1px solid #2a2835;
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .field-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #7c6fff;
+    margin-bottom: 6px;
+  }
+
+  .field-value {
+    font-size: 0.85rem;
+    color: #c8c6c0;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+
+  .status {
+    font-size: 0.8rem;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-top: 12px;
+    display: none;
+  }
+
+  .status.info    { display: block; background: #1a1830; color: #7c6fff; border: 1px solid #2a2845; }
+  .status.success { display: block; background: #1a2e20; color: #4ade80; border: 1px solid #2d4a35; }
+  .status.error   { display: block; background: #2e1a1a; color: #f87171; border: 1px solid #4a2d2d; }
+
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .manual-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+
+  .manual-grid .full-width { grid-column: 1 / -1; }
+
+  .field-group { display: flex; flex-direction: column; position: relative; }
+
+  .date-hint {
+    font-size: 0.72rem;
+    color: #7c6fff;
+    margin-top: 5px;
+    min-height: 16px;
+  }
+
+  .why-note { margin-top: 12px; }
+
+  /* Autocomplete dropdown */
+  .autocomplete-wrap { position: relative; }
+
+  .ac-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: #1f1e26;
+    border: 1px solid #3a3850;
+    border-radius: 8px;
+    z-index: 100;
+    max-height: 160px;
+    overflow-y: auto;
+    display: none;
+  }
+
+  .ac-dropdown.open { display: block; }
+
+  .ac-item {
+    padding: 9px 12px;
+    font-size: 0.85rem;
+    color: #c8c6c0;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .ac-item:hover, .ac-item.active { background: #2a2840; color: #fff; }
+  .required-star { color: #f87171; margin-left: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Job Saver</h1>
+<p class="subtitle">Paste a job description → AI extracts the key info → saves to your Google Sheet</p>
+
+<!-- Job Details -->
+<div class="card">
+  <label>Job Details</label>
+  <div class="manual-grid">
+
+    <div class="field-group">
+      <label>Job Title <span class="required-star">*</span></label>
+      <div class="autocomplete-wrap">
+        <input type="text" id="manualTitle" placeholder="e.g. Senior Data Engineer" autocomplete="off"
+          oninput="acFilter(this, 'title')" onkeydown="acKey(event, 'title')" onfocus="acFilter(this, 'title')" onblur="acBlur('title')" />
+        <div class="ac-dropdown" id="ac-title"></div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Company <span class="required-star">*</span></label>
+      <div class="autocomplete-wrap">
+        <input type="text" id="manualCompany" placeholder="e.g. Stripe" autocomplete="off"
+          oninput="acFilter(this, 'company')" onkeydown="acKey(event, 'company')" onfocus="acFilter(this, 'company')" onblur="acBlur('company')" />
+        <div class="ac-dropdown" id="ac-company"></div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Location</label>
+      <div class="autocomplete-wrap">
+        <input type="text" id="manualLocation" placeholder="e.g. New York, NY / Remote" autocomplete="off"
+          oninput="acFilter(this, 'location')" onkeydown="acKey(event, 'location')" onfocus="acFilter(this, 'location')" onblur="acBlur('location')" />
+        <div class="ac-dropdown" id="ac-location"></div>
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>Time Posted (as shown on LinkedIn)</label>
+      <input type="text" id="manualTimePosted" placeholder="e.g. 2 months ago, 3 weeks ago"
+        oninput="resolvePostedDate(this.value)" />
+      <div class="date-hint" id="dateHint"></div>
+    </div>
+
+    <div class="field-group full-width">
+      <label>Job Post URL</label>
+      <input type="text" id="manualUrl" placeholder="e.g. https://www.linkedin.com/jobs/view/..." />
+    </div>
+
+  </div>
+</div>
+
+<!-- Job Description -->
+<div class="card">
+  <label>Job Description</label>
+  <textarea id="jdInput" placeholder="Paste the full job description here — title, company, responsibilities, requirements, salary if listed, everything."></textarea>
+  <div class="why-note">
+    <label>Why does this role excite you? (optional)</label>
+    <input type="text" id="whyInput" placeholder="e.g. love their product, ML infra work, remote-first culture..." />
+  </div>
+  <br>
+  <button class="btn btn-primary" id="extractBtn" onclick="extractJD()">
+    <span>Extract with AI</span>
+  </button>
+  <div class="status" id="extractStatus"></div>
+</div>
+
+<!-- Extracted preview -->
+<div class="card" id="extractedCard" style="display:none;">
+  <label>Extracted Info — review before saving</label>
+  <div class="extracted-grid" id="extractedGrid"></div>
+  <br>
+  <button class="btn btn-save" id="saveBtn" onclick="saveToSheet()">
+    Save to Google Sheet
+  </button>
+  <div class="status" id="saveStatus"></div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────
+const SHEET_ID  = '1uIMsebRUBF4M9AtX4l_I0T81EuajGjglJR3Ou1DVCu0';
+const API_KEY   = 'AIzaSyDeCmpcHE77Nyl3U73BB_KUCLL2g1QjNlM';
+const SHEET_TAB = 'Sheet1';
+const HEADERS   = ['Date Saved','Company','Role Title','Location','Posted Date','Salary','Tech Stack','Responsibilities','Requirements','Company Stage','Why It Excites Me','Source URL'];
+
+// ── State ─────────────────────────────────────────────────
+let extracted = null;
+
+// Previous entries for autocomplete — keyed by field
+const acHistory = { title: new Set(), company: new Set(), location: new Set() };
+// Map input id → history key
+const acMap = { manualTitle: 'title', manualCompany: 'company', manualLocation: 'location' };
+// Track highlighted index per dropdown
+const acIdx = { title: -1, company: -1, location: -1 };
+
+// ── Load existing sheet data for autocomplete ─────────────
+async function loadHistory() {
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${SHEET_TAB}!A:L?key=${API_KEY}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.values || data.values.length < 2) return;
+    // Skip header row (index 0)
+    for (let i = 1; i < data.values.length; i++) {
+      const row = data.values[i];
+      if (row[1]) acHistory.company.add(row[1]);   // col B = Company
+      if (row[2]) acHistory.title.add(row[2]);      // col C = Role Title
+      if (row[3]) acHistory.location.add(row[3]);   // col D = Location
+    }
+  } catch(e) {
+    console.warn('Could not load history for autocomplete:', e);
+  }
+}
+
+// ── Autocomplete logic ────────────────────────────────────
+function acFilter(input, key) {
+  const dd = document.getElementById(`ac-${key}`);
+  const val = input.value.toLowerCase();
+  const matches = [...acHistory[key]].filter(v => v.toLowerCase().includes(val));
+  acIdx[key] = -1;
+  if (!matches.length) { dd.classList.remove('open'); return; }
+  dd.innerHTML = matches.map((m, i) =>
+    `<div class="ac-item" onmousedown="acSelect('${key}', this)" data-val="${m}">${m}</div>`
+  ).join('');
+  dd.classList.add('open');
+}
+
+function acSelect(key, el) {
+  const inputId = Object.keys(acMap).find(k => acMap[k] === key);
+  document.getElementById(inputId).value = el.dataset.val;
+  document.getElementById(`ac-${key}`).classList.remove('open');
+}
+
+function acBlur(key) {
+  // Small delay so mousedown on item fires first
+  setTimeout(() => document.getElementById(`ac-${key}`).classList.remove('open'), 150);
+}
+
+function acKey(e, key) {
+  const dd = document.getElementById(`ac-${key}`);
+  const items = dd.querySelectorAll('.ac-item');
+  if (!items.length || !dd.classList.contains('open')) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acIdx[key] = Math.min(acIdx[key] + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('active', i === acIdx[key]));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acIdx[key] = Math.max(acIdx[key] - 1, 0);
+    items.forEach((el, i) => el.classList.toggle('active', i === acIdx[key]));
+  } else if (e.key === 'Enter' && acIdx[key] >= 0) {
+    e.preventDefault();
+    acSelect(key, items[acIdx[key]]);
+  } else if (e.key === 'Escape') {
+    dd.classList.remove('open');
+  }
+}
+
+// ── Date resolution ───────────────────────────────────────
+function resolvePostedDate(input) {
+  const hint = document.getElementById('dateHint');
+  if (!input.trim()) { hint.textContent = ''; return; }
+  const today = new Date();
+  const str = input.toLowerCase().trim();
+  let estimated = null;
+  const monthMatch = str.match(/(\d+)\s*month/);
+  const weekMatch  = str.match(/(\d+)\s*week/);
+  const dayMatch   = str.match(/(\d+)\s*day/);
+  if (monthMatch) {
+    estimated = new Date(today.getFullYear(), today.getMonth() - parseInt(monthMatch[1]), 15);
+  } else if (weekMatch) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - parseInt(weekMatch[1]) * 7 + 3);
+    estimated = d;
+  } else if (dayMatch) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - parseInt(dayMatch[1]));
+    estimated = d;
+  } else if (str.includes('yesterday')) {
+    const d = new Date(today); d.setDate(d.getDate() - 1); estimated = d;
+  } else if (str.includes('today') || str.includes('just now') || str.includes('hour')) {
+    estimated = today;
+  }
+  if (estimated) {
+    const fmt = estimated.toISOString().split('T')[0];
+    hint.textContent = `→ estimated ${fmt}`;
+    hint.dataset.resolved = fmt;
+  } else {
+    hint.textContent = 'Could not parse — will save as-is';
+    hint.dataset.resolved = '';
+  }
+}
+
+function getPostedDate() {
+  const hint = document.getElementById('dateHint');
+  const raw = document.getElementById('manualTimePosted').value.trim();
+  if (!raw) return '';
+  return hint.dataset.resolved || raw;
+}
+
+// ── Fields for preview ────────────────────────────────────
+const FIELDS = [
+  { key: 'company',          label: 'Company' },
+  { key: 'role_title',       label: 'Role Title' },
+  { key: 'location',         label: 'Location / Remote' },
+  { key: 'posted_date',      label: 'Posted Date (estimated)' },
+  { key: 'salary',           label: 'Salary Range' },
+  { key: 'tech_stack',       label: 'Tech Stack / Skills' },
+  { key: 'responsibilities', label: 'Key Responsibilities' },
+  { key: 'requirements',     label: 'Requirements' },
+  { key: 'company_stage',    label: 'Company Stage / Size' },
+  { key: 'source_url',       label: 'Source URL' },
+];
+
+function setStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = `status ${type}`;
+  el.textContent = msg;
+}
+
+// ── Extract ───────────────────────────────────────────────
+async function extractJD() {
+  const title   = document.getElementById('manualTitle').value.trim();
+  const company = document.getElementById('manualCompany').value.trim();
+  if (!title)   { setStatus('extractStatus', 'error', 'Job Title is required.'); return; }
+  if (!company) { setStatus('extractStatus', 'error', 'Company is required.'); return; }
+
+  const jd = document.getElementById('jdInput').value.trim();
+
+  const btn = document.getElementById('extractBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span><span>Extracting…</span>';
+  setStatus('extractStatus', 'info', 'Claude is reading the job description…');
+  document.getElementById('extractedCard').style.display = 'none';
+
+  const why = document.getElementById('whyInput').value.trim();
+
+  const whyInstruction = why
+    ? `- why_exciting: the user wrote: "${why}" — distill into 3-5 comma-separated keywords or short phrases capturing the essence (e.g. "ML infra, remote-first, strong eng culture"). No full sentences.`
+    : `- why_exciting: ""`;
+
+  const l = document.getElementById('manualLocation').value.trim();
+  const u = document.getElementById('manualUrl').value.trim();
+
+  try {
+    if (!jd) {
+      // No JD — build from manual fields only, skip AI
+      extracted = {
+        company: company, role_title: title,
+        location: l, posted_date: getPostedDate(),
+        salary: '', tech_stack: '', responsibilities: '',
+        requirements: '', company_stage: '', source_url: u,
+        why_exciting: why ? why.slice(0, 80) : ''
+      };
+      renderExtracted();
+      setStatus('extractStatus', 'success', 'Saved from manual fields. Review below then save.');
+    } else {
+      // JD provided — run AI extraction
+      const prompt = `Extract structured information from this job description. Return ONLY a valid JSON object with these exact keys:
+- company: company name
+- role_title: job title
+- location: location and/or remote policy
+- salary: salary or compensation range (write "Not listed" if absent)
+- tech_stack: comma-separated list of tools, languages, frameworks, technologies mentioned
+- responsibilities: 3-5 bullet points summarizing main responsibilities (use • as bullet character)
+- requirements: 3-5 bullet points of key requirements/qualifications (use • as bullet character)
+- company_stage: company stage or size if mentioned (startup, Series B, public, 500 employees, etc — write "Not listed" if absent)
+- source_url: any URL mentioned, otherwise write "Not listed"
+${whyInstruction}
+
+Job description:
+${jd}
+
+Return only the JSON object, no markdown, no explanation.`;
+
+      const res = await fetch('/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1000,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content.map(b => b.text || '').join('');
+      extracted = JSON.parse(text.replace(/```json|```/g, '').trim());
+
+      // Manual fields always override AI
+      extracted.role_title  = title;
+      extracted.company     = company;
+      if (l) extracted.location   = l;
+      if (u) extracted.source_url = u;
+      extracted.posted_date = getPostedDate();
+
+      renderExtracted();
+      setStatus('extractStatus', 'success', 'Extracted! Review below then save.');
+    }
+  } catch(e) {
+    setStatus('extractStatus', 'error', 'Extraction failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>Extract with AI</span>';
+  }
+}
+
+function renderExtracted() {
+  const grid = document.getElementById('extractedGrid');
+  grid.innerHTML = '';
+  const allFields = [...FIELDS];
+  if (extracted.why_exciting) allFields.push({ key: 'why_exciting', label: 'Why It Excites Me' });
+  for (const f of allFields) {
+    grid.innerHTML += `
+      <div class="field-block">
+        <div class="field-label">${f.label}</div>
+        <div class="field-value">${extracted[f.key] || '—'}</div>
+      </div>`;
+  }
+  document.getElementById('extractedCard').style.display = 'block';
+}
+
+// ── Save to Sheets (via Railway proxy) ────────────────────
+const PROXY_URL = 'https://fav-job-saver-production.up.railway.app/save';
+
+async function saveToSheet() {
+  if (!extracted) { setStatus('saveStatus', 'error', 'Nothing to save yet.'); return; }
+
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span><span>Saving…</span>';
+  setStatus('saveStatus', 'info', 'Saving to Google Sheet…');
+
+  const dateSaved = new Date().toISOString().split('T')[0];
+  const row = [
+    dateSaved,
+    extracted.company          || '',
+    extracted.role_title       || '',
+    extracted.location         || '',
+    extracted.posted_date      || '',
+    extracted.salary           || '',
+    extracted.tech_stack       || '',
+    extracted.responsibilities || '',
+    extracted.requirements     || '',
+    extracted.company_stage    || '',
+    extracted.why_exciting     || '',
+    extracted.source_url       || '',
+  ];
+
+  try {
+    const res = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ row })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (data.status !== 'ok') throw new Error(JSON.stringify(data));
+
+    // 4. Update autocomplete history with new values
+    if (extracted.company)    acHistory.company.add(extracted.company);
+    if (extracted.role_title) acHistory.title.add(extracted.role_title);
+    if (extracted.location)   acHistory.location.add(extracted.location);
+
+    setStatus('saveStatus', 'success', '✓ Saved to your Google Sheet!');
+
+    setTimeout(() => {
+      ['jdInput','whyInput','manualTitle','manualCompany','manualLocation','manualUrl','manualTimePosted']
+        .forEach(id => document.getElementById(id).value = '');
+      document.getElementById('dateHint').textContent = '';
+      document.getElementById('dateHint').dataset.resolved = '';
+      document.getElementById('extractedCard').style.display = 'none';
+      document.getElementById('extractStatus').className = 'status';
+      extracted = null;
+      btn.innerHTML = 'Save to Google Sheet';
+      btn.disabled = false;
+    }, 2000);
+
+  } catch(e) {
+    setStatus('saveStatus', 'error', 'Save failed: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = 'Save to Google Sheet';
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────
+loadHistory();
+</script>
+</body>
+</html>
