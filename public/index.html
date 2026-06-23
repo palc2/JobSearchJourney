@@ -215,6 +215,17 @@
 
   .ac-item:hover, .ac-item.active { background: #2a2840; color: #fff; }
   .required-star { color: #f87171; margin-left: 2px; }
+
+  .field-value.editable {
+    outline: none;
+    cursor: text;
+    border-radius: 4px;
+    padding: 2px 4px;
+    margin: -2px -4px;
+    transition: background 0.15s;
+  }
+  .field-value.editable:hover { background: #1a1925; }
+  .field-value.editable:focus { background: #1a1925; box-shadow: 0 0 0 1px #7c6fff; }
 </style>
 </head>
 <body>
@@ -286,21 +297,28 @@
 
 <!-- Extracted preview -->
 <div class="card" id="extractedCard" style="display:none;">
-  <label>Extracted Info — review before saving</label>
+  <label>Extracted Info — review &amp; edit, then copy</label>
   <div class="extracted-grid" id="extractedGrid"></div>
   <br>
-  <button class="btn btn-save" id="saveBtn" onclick="saveToSheet()">
-    Save to Google Sheet
+  <button class="btn btn-save" id="copyRowBtn" onclick="copyRowForSheet()">
+    Copy row for Sheet
   </button>
+  <button class="btn" id="copyHeaderBtn" onclick="copyHeader()"
+    style="background:#1f1e26;color:#9b93ff;border:1px solid #3a3850;width:100%;justify-content:center;margin-top:8px;">
+    Copy header row (first time only)
+  </button>
+  <textarea id="pasteBox" readonly
+    style="margin-top:10px;min-height:60px;font-size:0.78rem;color:#9b93ff;"
+    placeholder="Your tab-separated row will appear here — it's copied automatically, or select-all and copy manually."></textarea>
   <div class="status" id="saveStatus"></div>
+  <p style="font-size:0.74rem;color:#5a5870;margin-top:10px;line-height:1.5;">
+    Paste into the next empty row of your sheet (click cell in column A, then Ctrl/Cmd+V). One paste fills all columns.
+  </p>
 </div>
 
 <script>
 // ── Config ────────────────────────────────────────────────
 const SHEET_ID  = '1uIMsebRUBF4M9AtX4l_I0T81EuajGjglJR3Ou1DVCu0';
-const API_KEY   = 'AIzaSyDeCmpcHE77Nyl3U73BB_KUCLL2g1QjNlM';
-const SHEET_TAB = 'Sheet1';
-const HEADERS   = ['Date Saved','Company','Role Title','Location','Posted Date','Salary','Tech Stack','Responsibilities','Requirements','Company Stage','Why It Excites Me','Source URL'];
 
 // ── State ─────────────────────────────────────────────────
 let extracted = null;
@@ -312,20 +330,32 @@ const acMap = { manualTitle: 'title', manualCompany: 'company', manualLocation: 
 // Track highlighted index per dropdown
 const acIdx = { title: -1, company: -1, location: -1 };
 
-// ── Load existing sheet data for autocomplete ─────────────
+// ── Load existing sheet data for autocomplete (via MCP) ───
 async function loadHistory() {
   try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${SHEET_TAB}!A:L?key=${API_KEY}`;
-    const res = await fetch(url);
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        mcp_servers: [
+          { type: 'url', url: 'https://drivemcp.googleapis.com/mcp/v1', name: 'google-drive' }
+        ],
+        messages: [{
+          role: 'user',
+          content: `Read the Google Sheet with file ID ${SHEET_ID} and return ONLY a JSON object with three arrays: {"companies": [unique values from the Company column], "titles": [unique values from the Role Title column], "locations": [unique values from the Location column]}. Skip the header row. If empty, return {"companies":[],"titles":[],"locations":[]}. Return only JSON, no other text.`
+        }]
+      })
+    });
     const data = await res.json();
-    if (!data.values || data.values.length < 2) return;
-    // Skip header row (index 0)
-    for (let i = 1; i < data.values.length; i++) {
-      const row = data.values[i];
-      if (row[1]) acHistory.company.add(row[1]);   // col B = Company
-      if (row[2]) acHistory.title.add(row[2]);      // col C = Role Title
-      if (row[3]) acHistory.location.add(row[3]);   // col D = Location
-    }
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return;
+    const hist = JSON.parse(match[0]);
+    (hist.companies || []).forEach(v => v && acHistory.company.add(v));
+    (hist.titles || []).forEach(v => v && acHistory.title.add(v));
+    (hist.locations || []).forEach(v => v && acHistory.location.add(v));
   } catch(e) {
     console.warn('Could not load history for autocomplete:', e);
   }
@@ -421,13 +451,22 @@ function getPostedDate() {
 const FIELDS = [
   { key: 'company',          label: 'Company' },
   { key: 'role_title',       label: 'Role Title' },
-  { key: 'location',         label: 'Location / Remote' },
+  { key: 'role_family',      label: 'Role Family' },
+  { key: 'seniority',        label: 'Seniority' },
+  { key: 'industry',         label: 'Industry' },
+  { key: 'company_stage',    label: 'Company Stage' },
+  { key: 'headcount_band',   label: 'Headcount Band' },
+  { key: 'work_model',       label: 'Work Model' },
+  { key: 'location',         label: 'Location' },
   { key: 'posted_date',      label: 'Posted Date (estimated)' },
   { key: 'salary',           label: 'Salary Range' },
-  { key: 'tech_stack',       label: 'Tech Stack / Skills' },
+  { key: 'tech_stack',       label: 'Tech Stack (normalized)' },
   { key: 'responsibilities', label: 'Key Responsibilities' },
   { key: 'requirements',     label: 'Requirements' },
-  { key: 'company_stage',    label: 'Company Stage / Size' },
+  { key: 'how_to_succeed',   label: 'How to Succeed in the Role' },
+  { key: 'what_we_offer',    label: 'What We Offer' },
+  { key: 'interview_process', label: 'Interview Process' },
+  { key: 'skills_gap',       label: 'Skills to Prep (edit me)' },
   { key: 'source_url',       label: 'Source URL' },
 ];
 
@@ -466,25 +505,38 @@ async function extractJD() {
       // No JD — build from manual fields only, skip AI
       extracted = {
         company: company, role_title: title,
+        role_family: '', seniority: '', industry: '',
+        company_stage: '', headcount_band: '', work_model: '',
         location: l, posted_date: getPostedDate(),
         salary: '', tech_stack: '', responsibilities: '',
-        requirements: '', company_stage: '', source_url: u,
+        requirements: '', how_to_succeed: '', what_we_offer: '',
+        interview_process: '', skills_gap: '', source_url: u,
         why_exciting: why ? why.slice(0, 80) : ''
       };
       renderExtracted();
       setStatus('extractStatus', 'success', 'Saved from manual fields. Review below then save.');
     } else {
       // JD provided — run AI extraction
-      const prompt = `Extract structured information from this job description. Return ONLY a valid JSON object with these exact keys:
+      const prompt = `Extract structured information from this job description. Return ONLY a valid JSON object with these exact keys. For the controlled-vocabulary fields, you MUST pick exactly ONE value from the allowed list (closest match if ambiguous).
+
 - company: company name
-- role_title: job title
-- location: location and/or remote policy
-- salary: salary or compensation range (write "Not listed" if absent)
-- tech_stack: comma-separated list of tools, languages, frameworks, technologies mentioned
-- responsibilities: 3-5 bullet points summarizing main responsibilities (use • as bullet character)
-- requirements: 3-5 bullet points of key requirements/qualifications (use • as bullet character)
-- company_stage: company stage or size if mentioned (startup, Series B, public, 500 employees, etc — write "Not listed" if absent)
-- source_url: any URL mentioned, otherwise write "Not listed"
+- role_title: exact job title from the posting
+- role_family: ONE of [Analytics Engineer, Data Engineer, Sales Engineer, Data Scientist, Data Analyst, Platform/Infra, Software Engineer, Other]
+- seniority: ONE of [Junior, Mid, Senior, Staff+] — infer from title and years required
+- industry: ONE of [Data Infra, Fintech, Healthtech, E-commerce, Dev Tools, AI/ML, Gaming, Enterprise SaaS, Other]
+- company_stage: ONE of [Seed, Series A-B, Series C+, Public, Private-established, Unknown]
+- headcount_band: ONE of [1-50, 51-200, 201-1000, 1000+, Unknown]
+- work_model: ONE of [Remote, Hybrid, Onsite, Unknown]
+- location: city/region as stated (just the place, not remote policy)
+- salary: salary range as listed, or "Not listed"
+- tech_stack: comma-separated list of tools/languages/frameworks. NORMALIZE to canonical names: use "Airflow" (not Apache Airflow), "Postgres" (not PostgreSQL), "BigQuery" (not GBQ/Google BigQuery), "dbt" (lowercase), "Spark" (not Apache Spark), "Kafka" (not Apache Kafka). De-duplicate.
+- responsibilities: 3-5 bullets summarizing main duties (use • as bullet)
+- requirements: 3-5 bullets of key qualifications (use • as bullet)
+- how_to_succeed: if the posting describes how success in this role is measured (KPIs, goals, what "great" looks like, 30/60/90 day expectations), summarize in 2-4 bullets (use • as bullet). If not described, "".
+- what_we_offer: if the posting lists benefits/perks (health, PTO, 401k, equity, etc.), summarize in 2-4 bullets (use • as bullet). If not described, "".
+- interview_process: if the posting describes the interview stages/process, summarize them in order as 2-5 bullets (use • as bullet). If not described, "".
+- skills_gap: identify the 2-4 most specialized or demanding technical requirements in THIS posting that a candidate would most likely need to study or prepare for an interview (e.g. "Iceberg internals, Kafka streaming, dbt at scale"). Comma-separated keywords. These are prep targets, not assumptions about the candidate.
+- source_url: any URL mentioned, otherwise "Not listed"
 ${whyInstruction}
 
 Job description:
@@ -492,7 +544,7 @@ ${jd}
 
 Return only the JSON object, no markdown, no explanation.`;
 
-      const res = await fetch('/extract', {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -527,78 +579,130 @@ function renderExtracted() {
   const grid = document.getElementById('extractedGrid');
   grid.innerHTML = '';
   const allFields = [...FIELDS];
-  if (extracted.why_exciting) allFields.push({ key: 'why_exciting', label: 'Why It Excites Me' });
+  if (extracted.why_exciting !== undefined) allFields.push({ key: 'why_exciting', label: 'Why It Excites Me' });
   for (const f of allFields) {
+    const val = extracted[f.key] || '';
     grid.innerHTML += `
       <div class="field-block">
         <div class="field-label">${f.label}</div>
-        <div class="field-value">${extracted[f.key] || '—'}</div>
+        <div class="field-value editable" contenteditable="true"
+             data-key="${f.key}" oninput="extracted['${f.key}'] = this.textContent">${val || '—'}</div>
       </div>`;
   }
   document.getElementById('extractedCard').style.display = 'block';
 }
 
-// ── Save to Sheets (via Railway proxy) ────────────────────
-const PROXY_URL = 'https://fav-job-saver-production.up.railway.app/save';
+// ── DIAGNOSTIC: test if mcp_servers works through the artifact's API proxy ──
+async function testMcpConnection() {
+  const out = document.getElementById('mcpTestResult');
+  out.textContent = 'Testing…';
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 300,
+        mcp_servers: [
+          { type: 'url', url: 'https://drivemcp.googleapis.com/mcp/v1', name: 'google-drive' }
+        ],
+        messages: [{
+          role: 'user',
+          content: 'Using the Google Drive tool, list the names of up to 3 files you can see. Just give me a short list of titles, nothing else.'
+        }]
+      })
+    });
+    const data = await res.json();
+    if (data.error) {
+      out.textContent = '❌ API error: ' + JSON.stringify(data.error);
+      return;
+    }
+    const text = (data.content || []).map(b => b.text || '').join('');
+    const usedMcp = (data.content || []).some(b => b.type === 'mcp_tool_use' || b.type === 'mcp_tool_result');
+    out.textContent = (usedMcp ? '✅ MCP TOOL USED. ' : '⚠️ No MCP tool call detected. ') + 'Response: ' + (text || JSON.stringify(data.content));
+  } catch(e) {
+    out.textContent = '❌ Fetch failed entirely: ' + e.message;
+  }
+}
 
-async function saveToSheet() {
-  if (!extracted) { setStatus('saveStatus', 'error', 'Nothing to save yet.'); return; }
+// ── Column schema (shared by header + row) ────────────────
+const HEADER_ROW = ['Date Saved','Company','Role Title','Role Family','Seniority','Industry','Company Stage','Headcount Band','Work Model','Location','Posted Date','Salary','Tech Stack','Responsibilities','Requirements','How to Succeed','What We Offer','Interview Process','Skills to Prep','Why It Excites Me','Source URL'];
 
-  const btn = document.getElementById('saveBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span><span>Saving…</span>';
-  setStatus('saveStatus', 'info', 'Saving to Google Sheet…');
+// Make a cell safe for single-row TSV paste: no tabs, no newlines
+function cleanCell(v) {
+  return String(v == null ? '' : v)
+    .replace(/\t/g, ' ')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
+function buildRow() {
+  // Clean placeholder dashes from any unedited fields
+  for (const k in extracted) {
+    if (extracted[k] === '—') extracted[k] = '';
+  }
   const dateSaved = new Date().toISOString().split('T')[0];
-  const row = [
+  return [
     dateSaved,
     extracted.company          || '',
     extracted.role_title       || '',
+    extracted.role_family      || '',
+    extracted.seniority        || '',
+    extracted.industry         || '',
+    extracted.company_stage    || '',
+    extracted.headcount_band   || '',
+    extracted.work_model       || '',
     extracted.location         || '',
     extracted.posted_date      || '',
     extracted.salary           || '',
     extracted.tech_stack       || '',
     extracted.responsibilities || '',
     extracted.requirements     || '',
-    extracted.company_stage    || '',
+    extracted.how_to_succeed   || '',
+    extracted.what_we_offer    || '',
+    extracted.interview_process || '',
+    extracted.skills_gap       || '',
     extracted.why_exciting     || '',
     extracted.source_url       || '',
-  ];
+  ].map(cleanCell);
+}
 
-  try {
-    const res = await fetch(PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ row })
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    if (data.status !== 'ok') throw new Error(JSON.stringify(data));
-
-    // 4. Update autocomplete history with new values
-    if (extracted.company)    acHistory.company.add(extracted.company);
-    if (extracted.role_title) acHistory.title.add(extracted.role_title);
-    if (extracted.location)   acHistory.location.add(extracted.location);
-
-    setStatus('saveStatus', 'success', '✓ Saved to your Google Sheet!');
-
-    setTimeout(() => {
-      ['jdInput','whyInput','manualTitle','manualCompany','manualLocation','manualUrl','manualTimePosted']
-        .forEach(id => document.getElementById(id).value = '');
-      document.getElementById('dateHint').textContent = '';
-      document.getElementById('dateHint').dataset.resolved = '';
-      document.getElementById('extractedCard').style.display = 'none';
-      document.getElementById('extractStatus').className = 'status';
-      extracted = null;
-      btn.innerHTML = 'Save to Google Sheet';
-      btn.disabled = false;
-    }, 2000);
-
-  } catch(e) {
-    setStatus('saveStatus', 'error', 'Save failed: ' + e.message);
-    btn.disabled = false;
-    btn.innerHTML = 'Save to Google Sheet';
+// Try to copy text; fall back to selecting the textarea for manual copy
+function copyText(text) {
+  const box = document.getElementById('pasteBox');
+  box.value = text;
+  box.focus();
+  box.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch(e) { ok = false; }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {}, () => {});
   }
+  return ok;
+}
+
+function copyHeader() {
+  const tsv = HEADER_ROW.join('\t');
+  const ok = copyText(tsv);
+  setStatus('saveStatus', ok ? 'success' : 'info',
+    ok ? '✓ Header copied — paste into row 1 of an empty sheet.'
+       : 'Header ready below — select all (Ctrl/Cmd+A) inside the box and copy.');
+}
+
+function copyRowForSheet() {
+  if (!extracted) { setStatus('saveStatus', 'error', 'Nothing to copy yet.'); return; }
+  const tsv = buildRow().join('\t');
+  const ok = copyText(tsv);
+
+  // Update autocomplete memory so future entries suggest these
+  if (extracted.company)    acHistory.company.add(extracted.company);
+  if (extracted.role_title) acHistory.title.add(extracted.role_title);
+  if (extracted.location)   acHistory.location.add(extracted.location);
+
+  setStatus('saveStatus', ok ? 'success' : 'info',
+    ok ? '✓ Row copied — click the next empty cell in column A of your sheet and paste.'
+       : 'Row ready below — select all (Ctrl/Cmd+A) inside the box and copy, then paste into your sheet.');
 }
 
 // ── Init ──────────────────────────────────────────────────
